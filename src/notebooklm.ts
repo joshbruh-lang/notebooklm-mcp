@@ -120,38 +120,55 @@ export async function queryNotebook(
     await ensureLoggedIn(page);
     await page.waitForTimeout(4000);
 
-    const input = page.locator('textarea, [contenteditable="true"]').first();
+    const input = page.locator('textarea[aria-label="Query box"], textarea.query-box-input').first();
     await input.waitFor({ state: "visible", timeout: 15000 });
     await input.click();
-    await input.fill(question).catch(async () => {
-      // contenteditable doesn't support fill; type instead
-      await input.type(question);
-    });
+    await input.fill(question);
+    const pairCountBefore = await page.locator(".chat-message-pair").count();
     await page.keyboard.press("Enter");
 
-    // Wait for a fresh response block. NotebookLM streams the answer; we
-    // poll until the latest assistant message stops growing for 1.5s.
-    const responseSel =
-      '[data-testid="chat-message"], .response-content, [role="article"]';
-    await page.waitForSelector(responseSel, { timeout: 30000 });
+    // Wait for a new chat-message-pair to appear (the user+assistant turn).
+    await page
+      .waitForFunction(
+        (n) => document.querySelectorAll(".chat-message-pair").length > n,
+        pairCountBefore,
+        { timeout: 30000 },
+      )
+      .catch(() => {});
 
+    // Poll until the answer has streamed in and stabilized. NotebookLM
+    // shows transient loading text ("Reading through pages...", "Thinking...")
+    // before the real answer streams. We require:
+    //   1. text length > 60 chars (rules out loaders)
+    //   2. text doesn't match known loader phrases
+    //   3. text is unchanged across ~3 seconds of polling
+    const LOADER_RE = /^(reading through|thinking|searching|analyzing|generating|retrieving|loading|preparing)/i;
     let prev = "";
     let stable = 0;
     const start = Date.now();
-    while (Date.now() - start < 90000) {
-      const text = await page.evaluate((sel) => {
-        const nodes = document.querySelectorAll(sel);
-        const last = nodes[nodes.length - 1] as HTMLElement | undefined;
-        return last?.innerText ?? "";
-      }, responseSel);
-      if (text && text === prev) {
+    while (Date.now() - start < 120000) {
+      const text = await page.evaluate(() => {
+        const pairs = document.querySelectorAll<HTMLElement>(".chat-message-pair");
+        const last = pairs[pairs.length - 1];
+        if (!last) return "";
+        const userEl = last.querySelector<HTMLElement>(".from-user-message-card-content");
+        const userText = (userEl?.innerText ?? "").trim();
+        const full = (last.innerText ?? "").trim();
+        // The completion action bar (Save to note, thumb_up, thumb_down)
+        // appears once streaming finishes — strip it from the answer.
+        let body = full.startsWith(userText) ? full.slice(userText.length).trim() : full;
+        body = body.replace(/\n*(keep\s+)?Save to note\s*\n?copy_all\s*\n?thumb_up\s*\n?thumb_down[\s\S]*$/i, "").trim();
+        return body;
+      });
+      const isLoader = LOADER_RE.test(text) || text.length < 60;
+      if (!isLoader && text && text === prev) {
         stable++;
-        if (stable >= 3) return text;
+        if (stable >= 4) return text;
       } else {
         stable = 0;
         prev = text;
       }
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(800);
     }
     return prev || "(no response captured)";
   } finally {
@@ -284,35 +301,40 @@ export async function addSource(
 ): Promise<{ ok: true }> {
   const page = await newPage();
   try {
-    await page.goto(`${NOTEBOOKLM_URL}/notebook/${notebookId}`, {
-      waitUntil: "domcontentloaded",
-    });
+    // ?addSource=true auto-opens the add-source dialog. Works on both new
+    // and existing notebooks, sidestepping the brittle "+" button selector.
+    await page.goto(
+      `${NOTEBOOKLM_URL}/notebook/${notebookId}?addSource=true`,
+      { waitUntil: "domcontentloaded" },
+    );
     await ensureLoggedIn(page);
-    await page.waitForTimeout(4000);
 
-    // Open "Add source" dialog. Button label is locale-dependent; match on
-    // common variants and aria-labels.
-    const addBtn = page
-      .locator(
-        'button:has-text("Add"), button[aria-label*="Add source" i], button[aria-label*="add" i]',
-      )
+    // Wait for the add-source dialog (distinguished from the always-present
+    // emoji-picker dialog by its content).
+    const dialog = page
+      .locator('[role="dialog"], mat-dialog-container')
+      .filter({ hasText: /Audio and Video|websites|drop your files/i })
       .first();
-    await addBtn.click({ timeout: 10000 });
+    await dialog.waitFor({ state: "visible", timeout: 15000 });
 
     if (source.kind === "url") {
-      await page.locator('button:has-text("Website"), button:has-text("URL")').first().click();
-      await page.locator('input[type="url"], input[type="text"]').first().fill(source.value);
-      await page.locator('button:has-text("Insert"), button:has-text("Add")').last().click();
+      await dialog.locator('button:has-text("Websites")').first().click();
+      const urlInput = page
+        .locator('textarea[aria-label="Enter URLs"], textarea[placeholder*="links" i]')
+        .first();
+      await urlInput.waitFor({ state: "visible", timeout: 10000 });
+      await urlInput.fill(source.value);
+      await page.locator('button:has-text("Insert")').first().click();
     } else {
-      await page.locator('button:has-text("Paste"), button:has-text("Text")').first().click();
-      await page
-        .locator('textarea, [contenteditable="true"]')
-        .first()
-        .fill(source.value);
-      await page.locator('button:has-text("Insert"), button:has-text("Add")').last().click();
+      await dialog.locator('button:has-text("Copied text")').first().click();
+      const textInput = page.locator('textarea').last();
+      await textInput.waitFor({ state: "visible", timeout: 10000 });
+      await textInput.fill(source.value);
+      await page.locator('button:has-text("Insert")').first().click();
     }
 
-    await page.waitForTimeout(3000);
+    // Source upload takes a few seconds; wait for the dialog to close.
+    await page.waitForTimeout(5000);
     return { ok: true };
   } finally {
     await page.close();
