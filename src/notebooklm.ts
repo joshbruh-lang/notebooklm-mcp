@@ -517,6 +517,134 @@ export async function renameNotebook(
   }
 }
 
+// Map artifact icon glyph (Material Symbols name) to a friendly type label.
+const ICON_TO_TYPE: Record<string, string> = {
+  subscriptions: "Video Overview",
+  audio_magic_eraser: "Audio Overview",
+  flowchart: "Mind Map",
+  auto_tab_group: "Report",
+  table_view: "Data Table",
+  tablet: "Slide Deck",
+  cards_star: "Flashcards",
+  quiz: "Quiz",
+  stacked_bar_chart: "Infographic",
+  sticky_note_2: "Note",
+};
+
+export type ArtifactSummary = {
+  index: number;
+  title: string;
+  type: string;
+  details: string;
+};
+
+export async function listArtifacts(
+  notebookId: string,
+): Promise<ArtifactSummary[]> {
+  const page = await newPage();
+  try {
+    await page.goto(`${NOTEBOOKLM_URL}/notebook/${notebookId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await ensureLoggedIn(page);
+    await page.waitForTimeout(5000);
+
+    return await page.evaluate((iconMap) => {
+      return Array.from(
+        document.querySelectorAll<HTMLElement>(".artifact-item-button"),
+      ).map((el, i) => {
+        const icon = el.querySelector<HTMLElement>(".artifact-icon")?.innerText.trim() ?? "";
+        const title = el.querySelector<HTMLElement>(".artifact-title")?.innerText.trim() ?? "";
+        const details = el.querySelector<HTMLElement>(".artifact-details")?.innerText.trim() ?? "";
+        return {
+          index: i,
+          title,
+          type: iconMap[icon] ?? icon,
+          details,
+        };
+      });
+    }, ICON_TO_TYPE);
+  } finally {
+    await page.close();
+  }
+}
+
+async function openArtifactMenu(page: Page, artifactIndex: number): Promise<void> {
+  await page.waitForSelector(".artifact-item-button", { timeout: 15000 });
+  const item = page.locator(".artifact-item-button").nth(artifactIndex);
+  await item.scrollIntoViewIfNeeded();
+  await item.hover();
+  await item.locator('button[aria-label="More"]').click({ timeout: 5000 });
+  await page.waitForTimeout(800);
+}
+
+export async function downloadArtifact(
+  notebookId: string,
+  artifactIndex: number,
+  savePath?: string,
+): Promise<{ ok: true; path: string; filename: string }> {
+  const page = await newPage();
+  try {
+    await page.goto(`${NOTEBOOKLM_URL}/notebook/${notebookId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await ensureLoggedIn(page);
+    await page.waitForTimeout(5000);
+
+    await openArtifactMenu(page, artifactIndex);
+
+    const downloadItem = page
+      .locator('[role="menuitem"], .mat-mdc-menu-item')
+      .filter({ hasText: /\bdownload\b/i })
+      .first();
+    if ((await downloadItem.count()) === 0) {
+      throw new Error(
+        "This artifact type has no Download option (Mind Maps, Reports, Slide Decks export to Google Workspace instead).",
+      );
+    }
+    const downloadPromise = page.waitForEvent("download", { timeout: 120000 });
+    await downloadItem.click({ timeout: 5000 });
+    const download = await downloadPromise;
+
+    const filename = download.suggestedFilename();
+    const target = savePath ?? join(homedir(), "Downloads", filename);
+    await download.saveAs(target);
+    return { ok: true, path: target, filename };
+  } finally {
+    await page.close();
+  }
+}
+
+export async function deleteArtifact(
+  notebookId: string,
+  artifactIndex: number,
+): Promise<{ ok: true }> {
+  const page = await newPage();
+  try {
+    await page.goto(`${NOTEBOOKLM_URL}/notebook/${notebookId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await ensureLoggedIn(page);
+    await page.waitForTimeout(5000);
+
+    await openArtifactMenu(page, artifactIndex);
+    await page
+      .locator('[role="menuitem"], .mat-mdc-menu-item')
+      .filter({ hasText: /delete/i })
+      .first()
+      .click({ timeout: 5000 });
+    await page
+      .locator('mat-dialog-container button, .mat-mdc-dialog-container button')
+      .filter({ hasText: /^\s*Delete\s*$/ })
+      .first()
+      .click({ timeout: 8000 });
+    await page.waitForTimeout(2000);
+    return { ok: true };
+  } finally {
+    await page.close();
+  }
+}
+
 export const STUDIO_TYPES = [
   "Audio Overview",
   "Slide Deck",

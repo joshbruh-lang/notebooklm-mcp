@@ -21,6 +21,9 @@ Google has no public NotebookLM API. Existing community MCPs reverse-engineer in
 | `delete_notebook` | Permanently deletes an entire notebook (destructive) |
 | `rename_notebook` | Renames a notebook |
 | `generate_studio` | Triggers Studio artifact generation (Audio Overview, Mind Map, Slide Deck, Video Overview, Reports, Flashcards, Quiz, Infographic, Data Table). Returns immediately — generation runs server-side for 30s–5min. |
+| `list_artifacts` | Lists Studio artifacts saved in a notebook with title, type, and stable indices |
+| `download_artifact` | Downloads a Studio artifact (audio mp3/m4a, video mp4) to a local file. Mind Maps and Reports are not downloadable — they export to Google Workspace from the NotebookLM UI |
+| `delete_artifact` | Permanently deletes a Studio artifact (destructive) |
 
 Selectors live in `src/notebooklm.ts` only. Expect to tweak them when Google ships UI changes.
 

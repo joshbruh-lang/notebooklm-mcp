@@ -10,10 +10,13 @@ import {
   addSource,
   closeContext,
   createNotebook,
+  deleteArtifact,
   deleteNotebook,
   deleteSource,
+  downloadArtifact,
   generateStudio,
   getSourceText,
+  listArtifacts,
   listNotebooks,
   listSources,
   queryNotebook,
@@ -159,6 +162,46 @@ const tools = [
     },
   },
   {
+    name: "list_artifacts",
+    description:
+      "List Studio artifacts (audio overviews, mind maps, slide decks, etc.) currently saved in a notebook. Returns title, type, details, and stable indices.",
+    inputSchema: {
+      type: "object",
+      properties: { notebook_id: { type: "string" } },
+      required: ["notebook_id"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "download_artifact",
+    description:
+      "Download a Studio artifact (audio mp3, video mp4, mind map, etc.) to a local file. Returns the saved path. If save_path is omitted, saves to ~/Downloads.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notebook_id: { type: "string" },
+        artifact_index: { type: "integer", minimum: 0, description: "Zero-based index from list_artifacts" },
+        save_path: { type: "string", description: "Optional absolute file path. Default: ~/Downloads/<filename>" },
+      },
+      required: ["notebook_id", "artifact_index"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "delete_artifact",
+    description:
+      "Permanently delete a Studio artifact from a notebook. Destructive — confirm with the user before invoking.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notebook_id: { type: "string" },
+        artifact_index: { type: "integer", minimum: 0 },
+      },
+      required: ["notebook_id", "artifact_index"],
+      additionalProperties: false,
+    },
+  },
+  {
     name: "generate_studio",
     description:
       "Trigger generation of a Studio artifact (Audio Overview, Mind Map, etc.). Returns immediately after triggering — generation runs server-side for 30s (mind map) to 5+ minutes (audio). Check the notebook in NotebookLM to see results.",
@@ -207,6 +250,16 @@ const RenameNotebookSchema = z.object({ notebook_id: z.string(), new_title: z.st
 const GenerateStudioSchema = z.object({
   notebook_id: z.string(),
   type: z.enum([...STUDIO_TYPES] as [string, ...string[]]),
+});
+const ListArtifactsSchema = z.object({ notebook_id: z.string() });
+const DownloadArtifactSchema = z.object({
+  notebook_id: z.string(),
+  artifact_index: z.number().int().min(0),
+  save_path: z.string().optional(),
+});
+const DeleteArtifactSchema = z.object({
+  notebook_id: z.string(),
+  artifact_index: z.number().int().min(0),
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -263,6 +316,21 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
     if (name === "rename_notebook") {
       const { notebook_id, new_title } = RenameNotebookSchema.parse(args);
       const res = await renameNotebook(notebook_id, new_title);
+      return { content: [{ type: "text", text: JSON.stringify(res) }] };
+    }
+    if (name === "list_artifacts") {
+      const { notebook_id } = ListArtifactsSchema.parse(args);
+      const res = await listArtifacts(notebook_id);
+      return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+    }
+    if (name === "download_artifact") {
+      const { notebook_id, artifact_index, save_path } = DownloadArtifactSchema.parse(args);
+      const res = await downloadArtifact(notebook_id, artifact_index, save_path);
+      return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
+    }
+    if (name === "delete_artifact") {
+      const { notebook_id, artifact_index } = DeleteArtifactSchema.parse(args);
+      const res = await deleteArtifact(notebook_id, artifact_index);
       return { content: [{ type: "text", text: JSON.stringify(res) }] };
     }
     if (name === "generate_studio") {
