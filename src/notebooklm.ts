@@ -418,7 +418,9 @@ export async function renameSource(
       .first()
       .click({ timeout: 5000 });
 
-    const input = page.locator('[role="dialog"] input, mat-dialog-container input').first();
+    // mat-dialog-container is the real dialog; bare [role="dialog"] also
+    // matches the persistent (hidden) emoji-picker on notebook pages.
+    const input = page.locator('mat-dialog-container input, .mat-mdc-dialog-container input').first();
     await input.waitFor({ state: "visible", timeout: 8000 });
     await input.fill(newTitle);
     await page
@@ -498,7 +500,9 @@ export async function renameNotebook(
       .filter({ hasText: /edit title/i })
       .first()
       .click({ timeout: 5000 });
-    const input = page.locator('[role="dialog"] input, mat-dialog-container input').first();
+    // mat-dialog-container is the real dialog; bare [role="dialog"] also
+    // matches the persistent (hidden) emoji-picker on notebook pages.
+    const input = page.locator('mat-dialog-container input, .mat-mdc-dialog-container input').first();
     await input.waitFor({ state: "visible", timeout: 8000 });
     await input.fill(newTitle);
     await page
