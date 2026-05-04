@@ -1,0 +1,26 @@
+{
+  "name": "notebooklm-mcp",
+  "version": "0.1.0",
+  "description": "Personal MCP server for Google NotebookLM via Playwright",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "notebooklm-mcp": "./dist/server.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "login": "tsx src/login.ts",
+    "start": "node dist/server.js",
+    "dev": "tsx src/server.ts"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "playwright": "^1.59.1",
+    "zod": "^4.4.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
