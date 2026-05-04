@@ -15,7 +15,8 @@ Google has no public NotebookLM API. Existing community MCPs reverse-engineer in
 | `get_source_text` | Reads full text of a source from the NotebookLM viewer |
 | `create_notebook` | Creates a new empty notebook, optionally renames it |
 | `query_notebook` | Asks a question; returns the assistant's answer (~30s typical) |
-| `add_source` | Adds a URL or pasted text as a new source |
+| `add_source` | Adds a URL, pasted text, or local file (PDF, .md, .txt, etc.) as a new source |
+| `share_notebook` | Share a notebook by email with one or more recipients |
 | `delete_source` | Removes a source from a notebook (destructive) |
 | `rename_source` | Renames a source |
 | `delete_notebook` | Permanently deletes an entire notebook (destructive) |

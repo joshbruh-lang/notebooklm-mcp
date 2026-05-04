@@ -197,23 +197,16 @@ export async function createNotebook(
     await page.waitForURL(/\/notebook\/[0-9a-f-]{8,}/, { timeout: 20000 });
     const id = page.url().match(/\/notebook\/([^/?#]+)/)?.[1] ?? "";
 
-    // Optionally rename. NotebookLM defaults the title to "Untitled notebook";
-    // clicking the title in the header turns it into an editable input.
+    // Close this page before renaming — renameNotebook navigates to the
+    // home page where the in-line title editor (Edit title) lives. The
+    // inline header on the new-notebook screen is blocked by the
+    // auto-opened add-source dialog, so doing it via the home card menu
+    // is more reliable.
+    await page.close();
     if (title) {
-      try {
-        const titleEl = page
-          .locator('h1, [role="heading"], [aria-label*="title" i]')
-          .first();
-        await titleEl.click({ timeout: 5000 });
-        await page.keyboard.press("Meta+A").catch(() => {});
-        await page.keyboard.type(title);
-        await page.keyboard.press("Tab");
-      } catch {
-        // Rename is best-effort; notebook is created either way.
-      }
+      await renameNotebook(id, title);
     }
-
-    return { id, url: page.url(), title };
+    return { id, url: `${NOTEBOOKLM_URL}/notebook/${id}`, title };
   } finally {
     await page.close();
   }
@@ -297,7 +290,7 @@ export async function getSourceText(
 
 export async function addSource(
   notebookId: string,
-  source: { kind: "url" | "text"; value: string; title?: string },
+  source: { kind: "url" | "text" | "file"; value: string; title?: string },
 ): Promise<{ ok: true }> {
   const page = await newPage();
   try {
@@ -325,17 +318,71 @@ export async function addSource(
       await urlInput.waitFor({ state: "visible", timeout: 10000 });
       await urlInput.fill(source.value);
       await page.locator('button:has-text("Insert")').first().click();
-    } else {
+    } else if (source.kind === "text") {
       await dialog.locator('button:has-text("Copied text")').first().click();
       const textInput = page.locator('textarea').last();
       await textInput.waitFor({ state: "visible", timeout: 10000 });
       await textInput.fill(source.value);
       await page.locator('button:has-text("Insert")').first().click();
+    } else {
+      // file: trigger the OS file chooser by clicking "Upload files".
+      const [fileChooser] = await Promise.all([
+        page.waitForEvent("filechooser", { timeout: 10000 }),
+        dialog.locator('button:has-text("Upload files")').first().click(),
+      ]);
+      await fileChooser.setFiles(source.value);
     }
 
-    // Source upload takes a few seconds; wait for the dialog to close.
-    await page.waitForTimeout(5000);
+    // Upload/parse takes longer for files than for URLs; give Google time.
+    await page.waitForTimeout(source.kind === "file" ? 12000 : 5000);
     return { ok: true };
+  } finally {
+    await page.close();
+  }
+}
+
+export async function shareNotebook(
+  notebookId: string,
+  emails: string[],
+  notify: boolean = true,
+): Promise<{ ok: true; sharedWith: string[] }> {
+  const page = await newPage();
+  try {
+    await page.goto(`${NOTEBOOKLM_URL}/notebook/${notebookId}`, {
+      waitUntil: "domcontentloaded",
+    });
+    await ensureLoggedIn(page);
+    await page.waitForTimeout(5000);
+
+    await page
+      .locator('button[aria-label="Share notebook"], button:has-text("Share")')
+      .first()
+      .click({ timeout: 10000 });
+    await page.waitForTimeout(2000);
+
+    const dialog = page.locator('mat-dialog-container, .mat-mdc-dialog-container').first();
+    const input = dialog.locator('input[type="text"]').first();
+    await input.waitFor({ state: "visible", timeout: 8000 });
+
+    for (const email of emails) {
+      await input.fill(email);
+      // Pressing Enter or Tab usually commits the chip in Material email pickers.
+      await page.keyboard.press("Enter");
+      await page.waitForTimeout(300);
+    }
+
+    // The "Notify people" checkbox is on by default. If notify=false, click to uncheck.
+    if (!notify) {
+      await dialog.locator('input[type="checkbox"]').first().click({ timeout: 3000 }).catch(() => {});
+    }
+
+    await dialog
+      .locator("button")
+      .filter({ hasText: /\bSave\b/ })
+      .first()
+      .click({ timeout: 5000 });
+    await page.waitForTimeout(2000);
+    return { ok: true, sharedWith: emails };
   } finally {
     await page.close();
   }

@@ -22,6 +22,7 @@ import {
   queryNotebook,
   renameNotebook,
   renameSource,
+  shareNotebook,
   STUDIO_TYPES,
 } from "./notebooklm.js";
 
@@ -96,16 +97,31 @@ const tools = [
   {
     name: "add_source",
     description:
-      "Add a source to a notebook. kind=url for a webpage; kind=text to paste raw text.",
+      "Add a source to a notebook. kind=url for a webpage; kind=text to paste raw text; kind=file to upload a local file (PDF, .md, .txt, etc.) — value must be an absolute path.",
     inputSchema: {
       type: "object",
       properties: {
         notebook_id: { type: "string" },
-        kind: { type: "string", enum: ["url", "text"] },
-        value: { type: "string" },
+        kind: { type: "string", enum: ["url", "text", "file"] },
+        value: { type: "string", description: "URL, text, or absolute file path depending on kind" },
         title: { type: "string" },
       },
       required: ["notebook_id", "kind", "value"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "share_notebook",
+    description:
+      "Share a notebook by email with one or more recipients. Adds them as collaborators with default access. Set notify=false to skip the email notification.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notebook_id: { type: "string" },
+        emails: { type: "array", items: { type: "string" }, minItems: 1 },
+        notify: { type: "boolean", default: true },
+      },
+      required: ["notebook_id", "emails"],
       additionalProperties: false,
     },
   },
@@ -235,9 +251,14 @@ const GetSourceTextSchema = z.object({
 });
 const AddSourceSchema = z.object({
   notebook_id: z.string(),
-  kind: z.enum(["url", "text"]),
+  kind: z.enum(["url", "text", "file"]),
   value: z.string(),
   title: z.string().optional(),
+});
+const ShareNotebookSchema = z.object({
+  notebook_id: z.string(),
+  emails: z.array(z.string()).min(1),
+  notify: z.boolean().default(true),
 });
 const DeleteSourceSchema = z.object({ notebook_id: z.string(), source_index: z.number().int().min(0) });
 const RenameSourceSchema = z.object({
@@ -297,6 +318,11 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const { notebook_id, kind, value, title } = AddSourceSchema.parse(args);
       const res = await addSource(notebook_id, { kind, value, title });
       return { content: [{ type: "text", text: JSON.stringify(res) }] };
+    }
+    if (name === "share_notebook") {
+      const { notebook_id, emails, notify } = ShareNotebookSchema.parse(args);
+      const res = await shareNotebook(notebook_id, emails, notify);
+      return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
     }
     if (name === "delete_source") {
       const { notebook_id, source_index } = DeleteSourceSchema.parse(args);
