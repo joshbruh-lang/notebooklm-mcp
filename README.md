@@ -8,16 +8,16 @@ Google has no public NotebookLM API. Existing community MCPs reverse-engineer in
 
 ## Tools exposed
 
-| Tool | Status | What it does |
-|---|---|---|
-| `list_notebooks` | ✅ tested | Returns all notebooks with id, title, emoji, metadata |
-| `list_sources` | ✅ tested | Returns sources attached to a notebook with stable indices |
-| `get_source_text` | ✅ tested | Reads full text of a source from the NotebookLM viewer |
-| `create_notebook` | 🔧 untested | Creates a new empty notebook, optionally renames it |
-| `query_notebook` | 🔧 untested | Asks a question; returns the assistant's answer |
-| `add_source` | 🔧 untested | Adds a URL or pasted text as a new source |
+| Tool | What it does |
+|---|---|
+| `list_notebooks` | Returns all notebooks with id, title, emoji, metadata |
+| `list_sources` | Returns sources attached to a notebook with stable indices |
+| `get_source_text` | Reads full text of a source from the NotebookLM viewer |
+| `create_notebook` | Creates a new empty notebook, optionally renames it |
+| `query_notebook` | Asks a question; returns the assistant's answer (~30s typical) |
+| `add_source` | Adds a URL or pasted text as a new source |
 
-The "untested" tools work in principle but their selectors haven't been validated end-to-end yet. Expect to tweak `src/notebooklm.ts` selectors when Google ships UI changes — that's the only file with brittle DOM dependencies.
+All six tools are smoke-tested end-to-end. Expect to tweak `src/notebooklm.ts` selectors when Google ships UI changes — that's the only file with brittle DOM dependencies.
 
 ## Setup
 
