@@ -16,8 +16,13 @@ Google has no public NotebookLM API. Existing community MCPs reverse-engineer in
 | `create_notebook` | Creates a new empty notebook, optionally renames it |
 | `query_notebook` | Asks a question; returns the assistant's answer (~30s typical) |
 | `add_source` | Adds a URL or pasted text as a new source |
+| `delete_source` | Removes a source from a notebook (destructive) |
+| `rename_source` | Renames a source |
+| `delete_notebook` | Permanently deletes an entire notebook (destructive) |
+| `rename_notebook` | Renames a notebook |
+| `generate_studio` | Triggers Studio artifact generation (Audio Overview, Mind Map, Slide Deck, Video Overview, Reports, Flashcards, Quiz, Infographic, Data Table). Returns immediately — generation runs server-side for 30s–5min. |
 
-All six tools are smoke-tested end-to-end. Expect to tweak `src/notebooklm.ts` selectors when Google ships UI changes — that's the only file with brittle DOM dependencies.
+Selectors live in `src/notebooklm.ts` only. Expect to tweak them when Google ships UI changes.
 
 ## Setup
 

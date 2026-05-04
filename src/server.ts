@@ -10,10 +10,16 @@ import {
   addSource,
   closeContext,
   createNotebook,
+  deleteNotebook,
+  deleteSource,
+  generateStudio,
   getSourceText,
   listNotebooks,
   listSources,
   queryNotebook,
+  renameNotebook,
+  renameSource,
+  STUDIO_TYPES,
 } from "./notebooklm.js";
 
 const server = new Server(
@@ -100,6 +106,76 @@ const tools = [
       additionalProperties: false,
     },
   },
+  {
+    name: "delete_source",
+    description:
+      "Permanently remove a source from a notebook. Destructive — confirm with the user before invoking.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notebook_id: { type: "string" },
+        source_index: { type: "integer", minimum: 0, description: "Zero-based index from list_sources" },
+      },
+      required: ["notebook_id", "source_index"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "rename_source",
+    description: "Rename a source in a notebook.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notebook_id: { type: "string" },
+        source_index: { type: "integer", minimum: 0 },
+        new_title: { type: "string" },
+      },
+      required: ["notebook_id", "source_index", "new_title"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "delete_notebook",
+    description:
+      "Permanently delete an entire notebook and all its sources. Destructive and irreversible — always confirm with the user before invoking.",
+    inputSchema: {
+      type: "object",
+      properties: { notebook_id: { type: "string" } },
+      required: ["notebook_id"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "rename_notebook",
+    description: "Rename a notebook.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notebook_id: { type: "string" },
+        new_title: { type: "string" },
+      },
+      required: ["notebook_id", "new_title"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "generate_studio",
+    description:
+      "Trigger generation of a Studio artifact (Audio Overview, Mind Map, etc.). Returns immediately after triggering — generation runs server-side for 30s (mind map) to 5+ minutes (audio). Check the notebook in NotebookLM to see results.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        notebook_id: { type: "string" },
+        type: {
+          type: "string",
+          enum: [...STUDIO_TYPES],
+          description: "Studio artifact type to generate",
+        },
+      },
+      required: ["notebook_id", "type"],
+      additionalProperties: false,
+    },
+  },
 ];
 
 server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools }));
@@ -119,6 +195,18 @@ const AddSourceSchema = z.object({
   kind: z.enum(["url", "text"]),
   value: z.string(),
   title: z.string().optional(),
+});
+const DeleteSourceSchema = z.object({ notebook_id: z.string(), source_index: z.number().int().min(0) });
+const RenameSourceSchema = z.object({
+  notebook_id: z.string(),
+  source_index: z.number().int().min(0),
+  new_title: z.string(),
+});
+const DeleteNotebookSchema = z.object({ notebook_id: z.string() });
+const RenameNotebookSchema = z.object({ notebook_id: z.string(), new_title: z.string() });
+const GenerateStudioSchema = z.object({
+  notebook_id: z.string(),
+  type: z.enum([...STUDIO_TYPES] as [string, ...string[]]),
 });
 
 server.setRequestHandler(CallToolRequestSchema, async (req) => {
@@ -156,6 +244,31 @@ server.setRequestHandler(CallToolRequestSchema, async (req) => {
       const { notebook_id, kind, value, title } = AddSourceSchema.parse(args);
       const res = await addSource(notebook_id, { kind, value, title });
       return { content: [{ type: "text", text: JSON.stringify(res) }] };
+    }
+    if (name === "delete_source") {
+      const { notebook_id, source_index } = DeleteSourceSchema.parse(args);
+      const res = await deleteSource(notebook_id, source_index);
+      return { content: [{ type: "text", text: JSON.stringify(res) }] };
+    }
+    if (name === "rename_source") {
+      const { notebook_id, source_index, new_title } = RenameSourceSchema.parse(args);
+      const res = await renameSource(notebook_id, source_index, new_title);
+      return { content: [{ type: "text", text: JSON.stringify(res) }] };
+    }
+    if (name === "delete_notebook") {
+      const { notebook_id } = DeleteNotebookSchema.parse(args);
+      const res = await deleteNotebook(notebook_id);
+      return { content: [{ type: "text", text: JSON.stringify(res) }] };
+    }
+    if (name === "rename_notebook") {
+      const { notebook_id, new_title } = RenameNotebookSchema.parse(args);
+      const res = await renameNotebook(notebook_id, new_title);
+      return { content: [{ type: "text", text: JSON.stringify(res) }] };
+    }
+    if (name === "generate_studio") {
+      const { notebook_id, type } = GenerateStudioSchema.parse(args);
+      const res = await generateStudio(notebook_id, type as never);
+      return { content: [{ type: "text", text: JSON.stringify(res, null, 2) }] };
     }
     return {
       isError: true,

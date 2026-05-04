@@ -4,3 +4,5 @@ dist/
 .DS_Store
 chrome-profile/
 .env
+src/inspect-*.ts
+src/smoke.ts
